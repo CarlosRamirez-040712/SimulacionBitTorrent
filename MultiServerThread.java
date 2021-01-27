@@ -1,16 +1,13 @@
-package clientpeer;
+package multiservers;
 
 import java.net.*;
 import java.io.*;
 import java.sql.ResultSet;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
- 
-public class MultiServerThread extends Thread 
-{
+
+public class MultiServerThread extends Thread {
     private Socket socket = null;
     Socket cliente = null; 
     PrintWriter escritor = null; 
@@ -22,50 +19,6 @@ public class MultiServerThread extends Thread
         super("MultiServerThread");
         this.socket = socket;
         Multiservers.NoClients++;
-    }
-    
-    public void EnviarArchivo(String Destino, String Archivo) throws IOException
-    {
-        DataInputStream input;
-        BufferedInputStream bis;
-        BufferedOutputStream bos;
-        int in;
-        byte[] byteArray;
-        //Fichero a transferir
-        final String filename = "C:\\Users\\kardi\\Desktop\\proyecto final\\ClientPeer\\" + Archivo;
- 
-        try
-        {
-            final File localFile = new File( filename );
-            Socket client = new Socket(Destino, 5000);
-            bis = new BufferedInputStream(new FileInputStream(localFile));
-            bos = new BufferedOutputStream(client.getOutputStream());
-            //Enviamos el nombre del fichero
-            DataOutputStream dos=new DataOutputStream(client.getOutputStream());
-            // dos.size();
-            int Tam = (int) localFile.length();
-            System.out.println(Tam);
-            String TamA = Integer.toString(Tam);
-            FileInputStream Fichero = new  FileInputStream(localFile);
-            Byte contenido = new Byte((byte) (int) localFile.length());
-            dos.writeUTF(localFile.getName());
-            dos.writeUTF(TamA);
-            //Enviamos el fichero
-            byteArray = new byte[8192];
-            int y=0;
-            while ((in = bis.read(byteArray)) != -1)
-            {
-                y++;
-                System.out.println(y);
-                bos.write(byteArray,0,in);
-                Thread.sleep(500);
-            }
-            bis.close();
-            bos.close(); 
-        }catch ( Exception e ) 
-        {
-            System.err.println(e);
-        }
     }
    
     public String conexion(String maquina, int puerto, String peticion) throws IOException
@@ -99,10 +52,10 @@ public class MultiServerThread extends Thread
         System.out.println("Respuesta obtenida");
         return line;
     }
-   
+
     public void run() 
     {
-        try 
+        try
         {
             PrintWriter escritor = new PrintWriter(socket.getOutputStream(), true);
             BufferedReader entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -116,46 +69,114 @@ public class MultiServerThread extends Thread
                     Multiservers.NoClients--;
 		    break;
 		}
-                else if (lineIn.equals("#"))
+                else if(lineIn.startsWith("terminar"))
                 {
-                    escritor.println(Multiservers.NoClients);
-                    escritor.flush();  
+                    String sq="update registros Set Estado='off' where IP=";  
+                    String[] parts = lineIn.split("/");
+                    sq = sq + "'"+ parts[1] + "'";
+                    System.out.println(sq);
+                    DB DataBase= new DB();
+                    DataBase.exe(sq); 
+                    DataBase.finalize();
+                    escritor.println("Modificacion exitosa");
+                    escritor.flush(); 
                 }
-                else if(lineIn.equals("Actualizar"))
+                else if(lineIn.startsWith("iniciar"))
                 {
-                    String UpdateA="";
-                    String UpdateP="";
-                    String Update;
-                    if(!ClientPeer.Archivos.isEmpty())
+                    String sq="update registros Set Estado='on' where IP=";  
+                    String[] parts = lineIn.split("/");
+                    sq = sq + "'"+ parts[1] + "'";
+                    System.out.println(sq);
+                    DB DataBase= new DB();
+                    DataBase.exe(sq); 
+                    DataBase.finalize();
+                    escritor.println("Modificacion exitosa");
+                    escritor.flush(); 
+                }
+                else if(lineIn.equals("#"))
+                {
+                    escritor.println("Numero de Clientes conectados "+ Multiservers.NoClients);
+                    escritor.flush(); 
+                }
+                else if(lineIn.startsWith("Busqueda"))
+                {
+                    String sq="select IP from registros where Archivo = ";
+                    String IPs = "";
+                    String[] parts = lineIn.split("/");
+                    sq = sq + "'" + parts[1] + "'" + " && Porcentaje >= 50 && Estado = 'on'";
+                    DB DataBase= new DB();
+                    ResultSet rs;
+                    rs = DataBase.runSql(sq);
+                    while(rs.next())
                     {
-                        for (Map.Entry<String, Integer> entry : ClientPeer.Archivos.entrySet()) 
-                        {
-                            UpdateA = UpdateA + entry.getKey() + "/";
-                            UpdateP = UpdateP + entry.getValue() + "/";
-                        }
-                        Update = UpdateA + UpdateP;
-                        Update = Update.substring(0, Update.length() - 1);
-                        System.out.println(Update);
-                        escritor.println(Update);
+                        IPs = IPs + rs.getString(1) + " ";
+                    }
+                    if(IPs.equals(""))
+                    {
+                        IPs="No existe el archivo en red";
+                    }
+                    DataBase.finalize();               
+                    escritor.println(IPs);
+                    escritor.flush(); 
+                }
+                else if(lineIn.startsWith("Tabla"))
+                { 
+                    String Archivos= "";
+                    DB DataBase= new DB();
+                    ResultSet rs;
+                    rs = DataBase.runSql("select Archivo from registros where porcentaje >= 50 && Estado = 'on' group by Archivo");
+                    while(rs.next())
+                    {
+                        Archivos = Archivos + rs.getString(1) + " ";
+                    }
+                    if(Archivos.equals(""))
+                    {
+                        Archivos="No hay Archivos en red";
+                    }
+                    DataBase.finalize();
+                    escritor.println(Archivos);
+                    escritor.flush(); 
+                }
+                else if (lineIn.startsWith("Registro")) 
+                {
+                    String sq="insert into peers (IP, Host_name) values(";
+                    String sq2= "select IP from peers where IP = ";
+                    String x="";
+                    String[] parts = lineIn.split("/");
+                    sq = sq + "'" + parts[1] + "', " + "'" + parts[2] + "')";
+                    sq2 = sq2 + "'" + parts[1] + "'";
+                    DB DataBase= new DB();
+                    ResultSet rs;
+                    rs = DataBase.runSql(sq2);
+                    while(rs.next())
+                    {
+                        x=x + rs.getString(1);
+                    }
+                    if (x.equals(""))
+                    {
+                        DataBase.exe(sq); 
+                        DataBase.finalize();
+                        escritor.println("Registro exitoso");
+                        escritor.flush();
+                    }
+                    else
+                    {
+                        DataBase.finalize();
+                        escritor.println("El ususario ya existe");
                         escritor.flush();     
-                    }else
-                    {
-                        escritor.println("Vacio");
-                        escritor.flush();    
                     }
                 }
-                else if(lineIn.startsWith("Descarga"))
+                else if(lineIn.startsWith("RegAr"))
                 {
-                    String[] parts = lineIn.split(" ");
-                    String Destino = parts[1];
-                    String Archivo = parts[2];
-                    System.out.println("Ontencion de datos");
-                    System.out.println("Iniciando peticion");
-                    this.EnviarArchivo(Destino, Archivo);
-                    System.out.println("Acabando de enviar");
-                    // EnviarArchivo(Destino, Archivo);
-                    //escritor.println("Descarga Terminada");
-                    //escritor.flush();
+                    String sq="insert into registros (no_registro, IP, Archivo, Porcentaje,Estado)values( ";  
+                    String[] parts = lineIn.split("/");
+                    sq = sq + " ' "+ Multiservers.NoRegistro+ " ' ,'" + parts[1] + "','" + parts[2] +"', "+parts[3] +",'on')";
+                    DB DataBase= new DB();
+                    DataBase.exe(sq); 
+                    DataBase.finalize();
+                    Multiservers.NoRegistro++;
+                    escritor.println("Registro Exitoso");
+                    escritor.flush();
                 }
                 else
                 {
@@ -176,11 +197,10 @@ public class MultiServerThread extends Thread
             } 
         }catch (IOException e) 
         {
-            e.printStackTrace();
+            //e.printStackTrace();
         } catch (Throwable ex) 
         {
-            Logger.getLogger(MultiServerThread.class.getName()).log(Level.SEVERE, null, ex);
+            //Logger.getLogger(MultiServerThread.class.getName()).log(Level.SEVERE, null, ex);
         }
-   }
+    }
 } 
-
